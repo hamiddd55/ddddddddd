@@ -1,13 +1,12 @@
 --[[
-    NEXUS HUB v1.0 — full build
-    Combat   · Fast Attack · Hitbox Expander · ESP
-    Movement · Speed · Jump · Fly · Noclip · InfJump
-    Farming  · Legendary Sword · Fruit M1 · Auto Collect · Auto Store
-    Visuals  · Snow · Rain · Trail · Skybox Cleanup
-    Utility  · Anti-Void · FPS Unlocker · Copy JobID · Server Hop · Rejoin
-    Client-side only. No key system. No anti-cheat bypass. Yours.
+    NEXUS HUB v1.1 — unified build
+    Combat · Movement · Farming · Visuals · Utility
+    Client-side only. No key system. No anti-cheat bypass.
 --]]
 
+-- ============================================================
+--  1. SERVICES
+-- ============================================================
 local Players, RunService, UserInputService, TweenService =
     game:GetService("Players"), game:GetService("RunService"),
     game:GetService("UserInputService"), game:GetService("TweenService")
@@ -18,34 +17,79 @@ local Lighting, TeleportService, Stats, Workspace =
     game:GetService("Stats"), game:GetService("Workspace")
 local lp, camera = Players.LocalPlayer, Workspace.CurrentCamera
 
+-- ============================================================
+--  2. COMPATIBILITY
+-- ============================================================
 local has = {
-    gethui = typeof(gethui) == "function",
-    setfpscap = typeof(setfpscap) == "function",
+    gethui            = typeof(gethui)            == "function",
+    setfpscap         = typeof(setfpscap)         == "function",
     firetouchinterest = typeof(firetouchinterest) == "function",
-    setclipboard = typeof(setclipboard) == "function",
+    setclipboard      = typeof(setclipboard)      == "function",
+    getrawmetatable   = typeof(getrawmetatable)   == "function",
+    hookmetamethod    = typeof(hookmetamethod)    == "function",
+    setreadonly       = typeof(setreadonly)       == "function",
+    newcclosure       = typeof(newcclosure)       == "function",
 }
 
+-- ============================================================
+--  3. CONFIG
+-- ============================================================
 local Config = {
-    Theme = Color3.fromRGB(0, 255, 150), Accent = Color3.fromRGB(255, 60, 90),
+    Theme = Color3.fromRGB(0, 255, 150),
+    Accent = Color3.fromRGB(255, 60, 90),
+
+    -- Combat
     FastAttack=false, FastAttackRange=120, FastAttackTick=3,
     Hitbox=false, HitboxSize=5, HitboxMode="All", HitboxTarget="",
     ESPPlayers=false, ESPFruits=false, ESPNPCs=false,
+    KillAura=false, KillAuraRange=150, KillAuraPlayer=true, KillAuraNPC=true, KillAuraDelay=0.15,
+    SilentAim=false, SilentAimFOV=100, SilentAimPart="Head", SilentAimShowFOV=false, SilentAimTeamCheck=false,
+    AutoDodge=false, AutoDodgeRange=30, AutoDodgeMode="Random",
+    WeaponCycle=false, WeaponCycleDelay=0.3,
+    CooldownIndicator=false,
+
+    -- Movement
     SpeedEnabled=false, Speed=16, JumpEnabled=false, Jump=50,
     Fly=false, FlySpeed=80, Noclip=false, InfJump=false,
+    FlashStep=false, FlashStepRange=200,
+    AutoFarmWalk=false,
+    BunnyHop=false,
+    SpinBot=false, SpinBotSpeed=300,
+
+    -- Farming
     LegendarySword=false, FruitM1=false, FruitM1Delay=0.25,
     AutoCollectFruit=false, AutoStoreFruit=false,
+    AutoQuest=false, AutoBoss=false, ChestFarm=false, AutoRaid=false,
+
+    -- Visuals
     Snow=false, Rain=false, Trail=false, TrailColor=Color3.fromRGB(0, 255, 150),
-    AntiVoid=false, FPSUnlocker=false, RemoveSkybox=false,
+    RemoveSkybox=false, Fullbright=false, NoFog=false,
+    HitEffects=false, HitEffectsColor=Color3.fromRGB(0, 255, 150),
+    DamageNumbers=false,
+
+    -- Utility
+    AntiVoid=false, FPSUnlocker=false, AutoRejoin=false, AntiAFK=false, ServerInfo=false,
 }
 getgenv().NEXUS = Config
 
+-- ============================================================
+--  4. STATE
+-- ============================================================
 local State = {
     Character=nil, Root=nil, Humanoid=nil, ESPFolder=nil,
     FlyBV=nil, FlyBG=nil, FruitRemote=nil, NetCache=nil,
     SnowGui=nil, SnowConn=nil, RainPart=nil, RainConn=nil,
-    TrailAttachments=nil, HitboxOriginals=setmetatable({}, {__mode="k"}),
+    TrailAttachments=nil,
+    HitboxOriginals=setmetatable({}, {__mode="k"}),
+    SilentAimCircle=nil, CooldownGui=nil, DamageGui=nil,
+    KillAuraLast=setmetatable({}, {__mode="k"}),
+    WeaponCycleLast=0,
+    LastDamage={},  -- [player] = last health
 }
 
+-- ============================================================
+--  5. CHARACTER BIND
+-- ============================================================
 local function onCharacter(c)
     State.Character = c
     State.Root = c:WaitForChild("HumanoidRootPart", 10)
@@ -54,14 +98,19 @@ end
 if lp.Character then onCharacter(lp.Character) end
 lp.CharacterAdded:Connect(onCharacter)
 
--- ============ UI ============
+-- ============================================================
+--  6. UI FRAMEWORK
+-- ============================================================
 local parent = has.gethui and gethui() or CoreGui
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name, ScreenGui.ResetOnSpawn, ScreenGui.IgnoreGuiInset, ScreenGui.ZIndexBehavior =
-    "NEXUS_HUB", false, true, Enum.ZIndexBehavior.Sibling
+ScreenGui.Name = "NEXUS_HUB"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 pcall(function() ScreenGui.Parent = parent end)
 if not ScreenGui.Parent then ScreenGui.Parent = lp:WaitForChild("PlayerGui") end
 
+-- Watermark
 local watermark = Instance.new("Frame", ScreenGui)
 watermark.Size = UDim2.new(0, 260, 0, 26)
 watermark.Position = UDim2.new(1, -280, 0, 20)
@@ -73,17 +122,18 @@ local wmS = Instance.new("UIStroke", watermark)
 wmS.Color, wmS.Thickness, wmS.Transparency = Config.Theme, 1, 0.4
 local wmL = Instance.new("TextLabel", watermark)
 wmL.Size, wmL.Position = UDim2.new(1,-12,1,0), UDim2.new(0,8,0,0)
-wmL.BackgroundTransparency, wmL.Text = 1, "NEXUS HUB v1.0"
+wmL.BackgroundTransparency, wmL.Text = 1, "NEXUS HUB v1.1"
 wmL.TextColor3, wmL.Font, wmL.TextSize = Config.Theme, Enum.Font.GothamBold, 11
 wmL.TextXAlignment = Enum.TextXAlignment.Left
 task.spawn(function()
     while watermark.Parent do
         local ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
-        wmL.Text = ("NEXUS HUB · %d ms"):format(ping)
+        wmL.Text = ("NEXUS HUB v1.1 · %d ms"):format(ping)
         task.wait(0.5)
     end
 end)
 
+-- Main
 local Main = Instance.new("Frame", ScreenGui)
 Main.Size = UDim2.new(0, 460, 0, 520)
 Main.Position = UDim2.new(0.5, -230, 0.5, -260)
@@ -114,19 +164,23 @@ hFix.Size = UDim2.new(1,0,0,12)
 hFix.Position = UDim2.new(0,0,1,-12)
 hFix.BackgroundColor3 = Header.BackgroundColor3
 hFix.BorderSizePixel = 0
+
 local T1 = Instance.new("TextLabel", Header)
 T1.Size, T1.Position = UDim2.new(1,-80,0,20), UDim2.new(0,16,0,6)
 T1.BackgroundTransparency, T1.Text = 1, "NEXUS HUB"
 T1.TextColor3, T1.Font, T1.TextSize = Color3.fromRGB(230,230,240), Enum.Font.GothamBold, 14
 T1.TextXAlignment = Enum.TextXAlignment.Left
+
 local T2 = Instance.new("TextLabel", Header)
 T2.Size, T2.Position = UDim2.new(1,-80,0,12), UDim2.new(0,16,1,-18)
-T2.BackgroundTransparency, T2.Text = 1, "clean build · v1.0"
+T2.BackgroundTransparency, T2.Text = 1, "unified build · v1.1"
 T2.TextColor3, T2.TextTransparency, T2.Font, T2.TextSize = Config.Theme, 0.3, Enum.Font.Gotham, 9
 T2.TextXAlignment = Enum.TextXAlignment.Left
+
 local d = Instance.new("Frame", Header)
 d.Size, d.Position, d.BackgroundColor3, d.BorderSizePixel = UDim2.new(0,6,0,6), UDim2.new(1,-22,0.5,-3), Config.Theme, 0
 Instance.new("UICorner", d).CornerRadius = UDim.new(1,0)
+
 local CB = Instance.new("TextButton", Header)
 CB.Size, CB.Position = UDim2.new(0,26,0,26), UDim2.new(1,-34,0.5,-13)
 CB.BackgroundColor3, CB.Text, CB.TextColor3 = Color3.fromRGB(28,28,36), "×", Color3.fromRGB(200,200,210)
@@ -187,6 +241,9 @@ local function makeTab(n, o)
     end)
 end
 
+-- ============================================================
+--  UI HELPERS
+-- ============================================================
 local function sec(par, t, o)
     local l = Instance.new("TextLabel", par)
     l.Size, l.BackgroundTransparency, l.Text = UDim2.new(1,0,0,16), 1, t:upper()
@@ -298,66 +355,146 @@ local function button(par, lbl, o, fn)
     b.MouseButton1Click:Connect(fn)
 end
 
--- ============ TABS + CONTENT ============
+-- ============================================================
+--  TABS
+-- ============================================================
 makeTab("Combat", 1); makeTab("Movement", 2); makeTab("Farming", 3)
 makeTab("Visuals", 4); makeTab("Utility", 5)
+-- ============================================================
+--  TAB CONTENT
+-- ============================================================
 
+-- Combat tab
 sec(Pages.Combat, "Fast Attack", 1)
 toggle(Pages.Combat, "Enable Fast Attack", "FastAttack", 2)
 slider(Pages.Combat, "Range", "FastAttackRange", 20, 500, 3)
 slider(Pages.Combat, "Tick Divisor", "FastAttackTick", 1, 8, 4)
-sec(Pages.Combat, "Hitbox Expander", 5)
-toggle(Pages.Combat, "Enable Hitbox", "Hitbox", 6)
-slider(Pages.Combat, "Size Multiplier", "HitboxSize", 1, 30, 7)
-input(Pages.Combat, "Target (empty = all)", "HitboxTarget", 8, "username")
-sec(Pages.Combat, "ESP", 9)
-toggle(Pages.Combat, "Players", "ESPPlayers", 10)
-toggle(Pages.Combat, "Fruits", "ESPFruits", 11)
-toggle(Pages.Combat, "NPCs", "ESPNPCs", 12)
 
+sec(Pages.Combat, "Kill Aura", 5)
+toggle(Pages.Combat, "Enable Kill Aura", "KillAura", 6)
+slider(Pages.Combat, "Kill Aura Range", "KillAuraRange", 30, 500, 7)
+slider(Pages.Combat, "Kill Aura Delay", "KillAuraDelay", 0.05, 1, 8)
+toggle(Pages.Combat, "Target Players", "KillAuraPlayer", 9)
+toggle(Pages.Combat, "Target NPCs", "KillAuraNPC", 10)
+
+sec(Pages.Combat, "Hitbox Expander", 11)
+toggle(Pages.Combat, "Enable Hitbox", "Hitbox", 12)
+slider(Pages.Combat, "Size Multiplier", "HitboxSize", 1, 30, 13)
+input(Pages.Combat, "Target (empty = all)", "HitboxTarget", 14, "username")
+
+sec(Pages.Combat, "Silent Aim", 15)
+toggle(Pages.Combat, "Enable Silent Aim", "SilentAim", 16)
+slider(Pages.Combat, "Silent Aim FOV", "SilentAimFOV", 20, 500, 17)
+toggle(Pages.Combat, "Show FOV Circle", "SilentAimShowFOV", 18)
+toggle(Pages.Combat, "Team Check", "SilentAimTeamCheck", 19)
+
+sec(Pages.Combat, "Auto Dodge", 20)
+toggle(Pages.Combat, "Enable Auto Dodge", "AutoDodge", 21)
+slider(Pages.Combat, "Dodge Range", "AutoDodgeRange", 10, 100, 22)
+
+sec(Pages.Combat, "Weapon Cycle", 23)
+toggle(Pages.Combat, "Enable Weapon Cycle", "WeaponCycle", 24)
+slider(Pages.Combat, "Cycle Delay", "WeaponCycleDelay", 0.1, 2, 25)
+
+sec(Pages.Combat, "ESP", 26)
+toggle(Pages.Combat, "Players", "ESPPlayers", 27)
+toggle(Pages.Combat, "Fruits", "ESPFruits", 28)
+toggle(Pages.Combat, "NPCs", "ESPNPCs", 29)
+
+sec(Pages.Combat, "Indicators", 30)
+toggle(Pages.Combat, "Cooldown Indicator", "CooldownIndicator", 31)
+toggle(Pages.Combat, "Damage Numbers", "DamageNumbers", 32)
+toggle(Pages.Combat, "Hit Effects", "HitEffects", 33)
+
+-- Movement tab
 sec(Pages.Movement, "Speed", 1)
 toggle(Pages.Movement, "Enable Speed", "SpeedEnabled", 2)
 slider(Pages.Movement, "Walk Speed", "Speed", 16, 300, 3)
+
 sec(Pages.Movement, "Jump", 4)
 toggle(Pages.Movement, "Enable Jump Power", "JumpEnabled", 5)
 slider(Pages.Movement, "Jump Power", "Jump", 50, 500, 6)
+
 sec(Pages.Movement, "Fly", 7)
 toggle(Pages.Movement, "Enable Fly", "Fly", 8)
 slider(Pages.Movement, "Fly Speed", "FlySpeed", 20, 400, 9)
+
 sec(Pages.Movement, "Noclip / InfJump", 10)
 toggle(Pages.Movement, "Noclip", "Noclip", 11)
 toggle(Pages.Movement, "Infinite Jump", "InfJump", 12)
 
+sec(Pages.Movement, "Flash Step", 13)
+toggle(Pages.Movement, "Enable Flash Step (E key)", "FlashStep", 14)
+slider(Pages.Movement, "Flash Step Range", "FlashStepRange", 20, 500, 15)
+
+sec(Pages.Movement, "Auto Farm Walk", 16)
+toggle(Pages.Movement, "Enable Auto Farm Walk", "AutoFarmWalk", 17)
+
+sec(Pages.Movement, "Bunny Hop", 18)
+toggle(Pages.Movement, "Enable Bunny Hop", "BunnyHop", 19)
+
+sec(Pages.Movement, "Spin Bot", 20)
+toggle(Pages.Movement, "Enable Spin Bot", "SpinBot", 21)
+slider(Pages.Movement, "Spin Speed", "SpinBotSpeed", 50, 1000, 22)
+
+-- Farming tab
 sec(Pages.Farming, "Legendary Sword", 1)
 toggle(Pages.Farming, "Auto Buy Legendary Sword", "LegendarySword", 2)
+
 sec(Pages.Farming, "Fruit M1", 3)
 toggle(Pages.Farming, "Enable Fruit M1 Spam", "FruitM1", 4)
 slider(Pages.Farming, "Delay (sec)", "FruitM1Delay", 0.05, 1, 5)
+
 sec(Pages.Farming, "Fruit Collection", 6)
 toggle(Pages.Farming, "Auto Collect Fruit", "AutoCollectFruit", 7)
 toggle(Pages.Farming, "Auto Store Fruit", "AutoStoreFruit", 8)
 
+sec(Pages.Farming, "Auto Quest", 9)
+toggle(Pages.Farming, "Enable Auto Quest", "AutoQuest", 10)
+
+sec(Pages.Farming, "Auto Boss", 11)
+toggle(Pages.Farming, "Enable Auto Boss", "AutoBoss", 12)
+
+sec(Pages.Farming, "Chest Farm", 13)
+toggle(Pages.Farming, "Enable Chest Farm", "ChestFarm", 14)
+
+sec(Pages.Farming, "Auto Raid", 15)
+toggle(Pages.Farming, "Enable Auto Raid", "AutoRaid", 16)
+
+-- Visuals tab
 sec(Pages.Visuals, "Weather VFX", 1)
 toggle(Pages.Visuals, "Snow", "Snow", 2)
 toggle(Pages.Visuals, "Rain", "Rain", 3)
+
 sec(Pages.Visuals, "Trail", 4)
 toggle(Pages.Visuals, "Enable Trail", "Trail", 5)
+
 sec(Pages.Visuals, "Environment", 6)
 toggle(Pages.Visuals, "Remove Skybox", "RemoveSkybox", 7)
+toggle(Pages.Visuals, "Fullbright", "Fullbright", 8)
+toggle(Pages.Visuals, "No Fog", "NoFog", 9)
 
+-- Utility tab
 sec(Pages.Utility, "Safety", 1)
 toggle(Pages.Utility, "Anti-Void", "AntiVoid", 2)
-sec(Pages.Utility, "Performance", 3)
-toggle(Pages.Utility, "FPS Unlocker", "FPSUnlocker", 4)
-sec(Pages.Utility, "Server", 5)
-button(Pages.Utility, "Copy Job ID", 6, function()
+toggle(Pages.Utility, "Auto Rejoin", "AutoRejoin", 3)
+toggle(Pages.Utility, "Anti-AFK", "AntiAFK", 4)
+
+sec(Pages.Utility, "Performance", 5)
+toggle(Pages.Utility, "FPS Unlocker", "FPSUnlocker", 6)
+
+sec(Pages.Utility, "Info", 7)
+toggle(Pages.Utility, "Server Info Display", "ServerInfo", 8)
+
+sec(Pages.Utility, "Server Actions", 9)
+button(Pages.Utility, "Copy Job ID", 10, function()
     if has.setclipboard then setclipboard(game.JobId) end
     print("[NEXUS] Job ID:", game.JobId)
 end)
-button(Pages.Utility, "Rejoin Server", 7, function()
+button(Pages.Utility, "Rejoin Server", 11, function()
     TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, lp)
 end)
-button(Pages.Utility, "Server Hop", 8, function()
+button(Pages.Utility, "Server Hop", 12, function()
     pcall(function()
         local s = HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"))
         for _, v in ipairs(s.data) do
@@ -372,17 +509,27 @@ end)
 for n, p in pairs(Pages) do p.Visible = (n == "Combat") end
 TabButtons.Combat.BackgroundColor3, TabButtons.Combat.TextColor3 = Config.Theme, Color3.fromRGB(10,10,15)
 
--- ============ FAST ATTACK ============
-local faLast = setmetatable({}, {__mode="k"})
+-- ============================================================
+--  BACKEND: NET
+-- ============================================================
 local function getNet()
     if State.NetCache then return State.NetCache end
-    local ok, mod = pcall(function() return require(ReplicatedStorage:WaitForChild("Modules",5):WaitForChild("Net",5)) end)
+    local ok, mod = pcall(function()
+        return require(ReplicatedStorage:WaitForChild("Modules",5):WaitForChild("Net",5))
+    end)
     if ok and mod then State.NetCache = mod end
     return State.NetCache
 end
+
+-- ============================================================
+--  FAST ATTACK
+-- ============================================================
+local faLast = setmetatable({}, {__mode="k"})
 local function faParts(t)
     local p = {}
-    for _, c in ipairs(t:GetChildren()) do if c:IsA("BasePart") then p[#p+1] = {t, c} end end
+    for _, c in ipairs(t:GetChildren()) do
+        if c:IsA("BasePart") then p[#p+1] = {t, c} end
+    end
     return p
 end
 local function fireFA(t)
@@ -427,7 +574,62 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- ============ HITBOX ============
+-- ============================================================
+--  KILL AURA
+-- ============================================================
+local function kaFire(target)
+    if not target or not target.Parent then return end
+    local now = tick()
+    if State.KillAuraLast[target] and now - State.KillAuraLast[target] < Config.KillAuraDelay then return end
+    State.KillAuraLast[target] = now
+    local hrp = target:FindFirstChild("HumanoidRootPart")
+    if not hrp or not getNet() then return end
+    local atk = ReplicatedStorage.Modules.Net:FindFirstChild("RE/RegisterAttack")
+    local hit = ReplicatedStorage.Modules.Net:FindFirstChild("RE/RegisterHit")
+    if not atk or not hit then return end
+    local parts = faParts(target)
+    if #parts == 0 then return end
+    pcall(function()
+        atk:FireServer()
+        hit:FireServer(hrp, parts)
+    end)
+end
+
+task.spawn(function()
+    while task.wait(0.05) do
+        if Config.KillAura and State.Root then
+            if Config.KillAuraPlayer then
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p ~= lp and p.Character then
+                        local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+                        local hum = p.Character:FindFirstChildOfClass("Humanoid")
+                        if hrp and hum and hum.Health > 0 and (hrp.Position - State.Root.Position).Magnitude <= Config.KillAuraRange then
+                            task.spawn(kaFire, p.Character)
+                        end
+                    end
+                end
+            end
+            if Config.KillAuraNPC then
+                local en = Workspace:FindFirstChild("Enemies")
+                if en then
+                    for _, e in ipairs(en:GetChildren()) do
+                        if e:IsA("Model") then
+                            local hrp = e:FindFirstChild("HumanoidRootPart")
+                            local hum = e:FindFirstChildOfClass("Humanoid")
+                            if hrp and hum and hum.Health > 0 and (hrp.Position - State.Root.Position).Magnitude <= Config.KillAuraRange then
+                                task.spawn(kaFire, e)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- ============================================================
+--  HITBOX
+-- ============================================================
 local HB_PARTS = {"HumanoidRootPart","Head","UpperTorso","LowerTorso","Torso"}
 local function hbExpand(p)
     if not p:IsA("BasePart") then return end
@@ -475,7 +677,125 @@ task.spawn(function()
     end
 end)
 
--- ============ ESP ============
+-- ============================================================
+--  SILENT AIM
+-- ============================================================
+local function saGetTarget()
+    if not State.Root then return nil end
+    local mousePos = UserInputService:GetMouseLocation()
+    local closest, closestDist = nil, Config.SilentAimFOV
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= lp and p.Character then
+            local skip = false
+            if Config.SilentAimTeamCheck and p.Team and lp.Team and p.Team == lp.Team then
+                skip = true
+            end
+            if not skip then
+                local part = p.Character:FindFirstChild(Config.SilentAimPart)
+                local hum = p.Character:FindFirstChildOfClass("Humanoid")
+                if part and hum and hum.Health > 0 then
+                    local pos, onScreen = camera:WorldToViewportPoint(part.Position)
+                    if onScreen then
+                        local dist = (Vector2.new(pos.X, pos.Y) - mousePos).Magnitude
+                        if dist < closestDist then
+                            closestDist = dist
+                            closest = {part = part, char = p.Character}
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return closest
+end
+
+if has.getrawmetatable and has.hookmetamethod then
+    local ok, err = pcall(function()
+        local oldIndex
+        oldIndex = hookmetamethod(game, "__index", function(self, key)
+            if Config.SilentAim and (self == camera or tostring(self):find("Camera")) and key == "CFrame" then
+                local t = saGetTarget()
+                if t and t.part then
+                    return CFrame.new(camera.CFrame.Position, t.part.Position)
+                end
+            end
+            return oldIndex(self, key)
+        end)
+    end)
+    if not ok then warn("[NEXUS] Silent Aim hook failed:", err) end
+end
+
+if Drawing and Drawing.new then
+    State.SilentAimCircle = Drawing.new("Circle")
+    State.SilentAimCircle.Thickness = 1.5
+    State.SilentAimCircle.NumSides = 80
+    State.SilentAimCircle.Filled = false
+    State.SilentAimCircle.Color = Config.Theme
+    State.SilentAimCircle.Transparency = 0.8
+    State.SilentAimCircle.Visible = false
+    RunService.RenderStepped:Connect(function()
+        if State.SilentAimCircle then
+            State.SilentAimCircle.Visible = Config.SilentAim and Config.SilentAimShowFOV
+            State.SilentAimCircle.Radius = Config.SilentAimFOV
+            State.SilentAimCircle.Position = UserInputService:GetMouseLocation()
+        end
+    end)
+end
+
+-- ============================================================
+--  AUTO DODGE
+-- ============================================================
+task.spawn(function()
+    while task.wait(0.1) do
+        if Config.AutoDodge and State.Root then
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= lp and p.Character then
+                    local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        local dist = (hrp.Position - State.Root.Position).Magnitude
+                        if dist < Config.AutoDodgeRange then
+                            local offset
+                            if Config.AutoDodgeMode == "Random" then
+                                offset = Vector3.new(math.random(-15,15), 0, math.random(-15,15))
+                            else
+                                offset = (State.Root.Position - hrp.Position).Unit * 15
+                            end
+                            State.Root.CFrame = CFrame.new(State.Root.Position + offset) * State.Root.CFrame.Rotation
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- ============================================================
+--  WEAPON CYCLE
+-- ============================================================
+task.spawn(function()
+    while task.wait(0.1) do
+        if Config.WeaponCycle then
+            local now = tick()
+            if now - State.WeaponCycleLast >= Config.WeaponCycleDelay then
+                State.WeaponCycleLast = now
+                local bp = lp:FindFirstChild("Backpack")
+                if bp and State.Humanoid then
+                    local tools = {}
+                    for _, t in ipairs(bp:GetChildren()) do
+                        if t:IsA("Tool") then tools[#tools+1] = t end
+                    end
+                    if #tools > 0 then
+                        pcall(function() State.Humanoid:EquipTool(tools[math.random(#tools)]) end)
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- ============================================================
+--  ESP
+-- ============================================================
 local function initESP()
     if State.ESPFolder and State.ESPFolder.Parent then return end
     State.ESPFolder = Instance.new("Folder")
@@ -515,27 +835,21 @@ task.spawn(function()
                 end
             end
         end
-        if Config.ESPNPCs then
-            local en = Workspace:FindFirstChild("Enemies")
-            if en then
-                for _, e in ipairs(en:GetChildren()) do
-                    if e:IsA("Model") and e:FindFirstChild("Humanoid") then
-                        addHL(e, Color3.fromRGB(255,150,50), "NEXUS_HL_N")
-                    end
+        local en = Workspace:FindFirstChild("Enemies")
+        if Config.ESPNPCs and en then
+            for _, e in ipairs(en:GetChildren()) do
+                if e:IsA("Model") and e:FindFirstChild("Humanoid") then
+                    addHL(e, Color3.fromRGB(255,150,50), "NEXUS_HL_N")
                 end
             end
-        else
-            local en = Workspace:FindFirstChild("Enemies")
-            if en then
-                for _, e in ipairs(en:GetChildren()) do
-                    rmHL(e, "NEXUS_HL_N")
-                end
-            end
+        elseif en then
+            for _, e in ipairs(en:GetChildren()) do rmHL(e, "NEXUS_HL_N") end
         end
     end
 end)
-
--- ============ MOVEMENT ============
+-- ============================================================
+--  MOVEMENT BACKEND
+-- ============================================================
 task.spawn(function()
     while task.wait(0.1) do
         if State.Humanoid then
@@ -603,12 +917,71 @@ UserInputService.JumpRequest:Connect(function()
     end
 end)
 
-lp.CharacterAdded:Connect(function()
-    task.wait(0.5)
-    disableFly()
+-- Flash Step
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if Config.FlashStep and input.KeyCode == Enum.KeyCode.E then
+        if State.Root and mouse then
+            local hit = lp:GetMouse().Hit
+            if hit then
+                local dir = (hit.Position - State.Root.Position)
+                local dist = dir.Magnitude
+                if dist > Config.FlashStepRange then
+                    dir = dir.Unit * Config.FlashStepRange
+                end
+                State.Root.CFrame = CFrame.new(State.Root.Position + dir + Vector3.new(0, 3, 0))
+            end
+        end
+    end
 end)
 
--- ============ FARMING: Legendary Sword ============
+-- Auto Farm Walk
+task.spawn(function()
+    while task.wait(0.4) do
+        if Config.AutoFarmWalk and State.Root and State.Humanoid then
+            local en = Workspace:FindFirstChild("Enemies")
+            if en then
+                local closest, closestDist = nil, math.huge
+                for _, e in ipairs(en:GetChildren()) do
+                    if e:IsA("Model") then
+                        local hrp = e:FindFirstChild("HumanoidRootPart")
+                        local hum = e:FindFirstChildOfClass("Humanoid")
+                        if hrp and hum and hum.Health > 0 then
+                            local d = (hrp.Position - State.Root.Position).Magnitude
+                            if d < closestDist and d < 200 then
+                                closestDist = d
+                                closest = hrp
+                            end
+                        end
+                    end
+                end
+                if closest and closestDist > 15 then
+                    State.Humanoid:MoveTo(closest.Position)
+                end
+            end
+        end
+    end
+end)
+
+-- Bunny Hop
+UserInputService.JumpRequest:Connect(function()
+    if Config.BunnyHop and State.Humanoid then
+        State.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+    end
+end)
+
+-- Spin Bot
+task.spawn(function()
+    while task.wait(0.03) do
+        if Config.SpinBot and State.Root then
+            State.Root.CFrame = State.Root.CFrame * CFrame.Angles(0, math.rad(Config.SpinBotSpeed / 50), 0)
+        end
+    end
+end)
+
+-- ============================================================
+--  FARMING BACKEND
+-- ============================================================
 task.spawn(function()
     while task.wait(0.5) do
         if Config.LegendarySword then
@@ -623,7 +996,6 @@ task.spawn(function()
     end
 end)
 
--- ============ FARMING: Fruit M1 ============
 local function getFruitRemote()
     if State.FruitRemote and State.FruitRemote.Parent then return State.FruitRemote end
     if State.Character then
@@ -651,14 +1023,11 @@ task.spawn(function()
         task.wait(Config.FruitM1Delay)
         if Config.FruitM1 and State.Root then
             local r = getFruitRemote()
-            if r then
-                pcall(function() r:FireServer(State.Root.CFrame.LookVector, 2, true) end)
-            end
+            if r then pcall(function() r:FireServer(State.Root.CFrame.LookVector, 2, true) end) end
         end
     end
 end)
 
--- ============ FARMING: Auto Collect ============
 task.spawn(function()
     while task.wait(0.5) do
         if Config.AutoCollectFruit and State.Root then
@@ -681,7 +1050,6 @@ task.spawn(function()
     end
 end)
 
--- ============ FARMING: Auto Store ============
 task.spawn(function()
     while task.wait(1) do
         if Config.AutoStoreFruit then
@@ -694,19 +1062,99 @@ task.spawn(function()
                         pcall(function() c:InvokeServer("StoreFruit", n, t) end)
                     end
                 end
-                if State.Character then
-                    for _, t in ipairs(State.Character:GetChildren()) do try(t) end
-                end
+                if State.Character then for _, t in ipairs(State.Character:GetChildren()) do try(t) end end
                 local bp = lp:FindFirstChild("Backpack")
-                if bp then
-                    for _, t in ipairs(bp:GetChildren()) do try(t) end
+                if bp then for _, t in ipairs(bp:GetChildren()) do try(t) end end
+            end
+        end
+    end
+end)
+
+-- Auto Quest
+task.spawn(function()
+    while task.wait(2) do
+        if Config.AutoQuest then
+            pcall(function()
+                local r = ReplicatedStorage:FindFirstChild("Remotes")
+                local c = r and r:FindFirstChild("CommF_")
+                if c then
+                    c:InvokeServer("GetQuest")
+                end
+            end)
+        end
+    end
+end)
+
+-- Auto Boss
+task.spawn(function()
+    while task.wait(0.5) do
+        if Config.AutoBoss and State.Root and State.Humanoid then
+            local en = Workspace:FindFirstChild("Enemies")
+            if en then
+                for _, e in ipairs(en:GetChildren()) do
+                    if e:IsA("Model") then
+                        local hum = e:FindFirstChildOfClass("Humanoid")
+                        local hrp = e:FindFirstChild("HumanoidRootPart")
+                        if hum and hrp and hum.Health > 0 and hum.MaxHealth > 10000 then
+                            if (hrp.Position - State.Root.Position).Magnitude > 15 then
+                                State.Humanoid:MoveTo(hrp.Position)
+                            end
+                            break
+                        end
+                    end
                 end
             end
         end
     end
 end)
 
--- ============ VISUALS: Snow ============
+-- Chest Farm
+task.spawn(function()
+    while task.wait(0.5) do
+        if Config.ChestFarm and State.Root then
+            for _, v in ipairs(Workspace:GetDescendants()) do
+                if v:IsA("Model") and (v.Name:lower():find("chest") or v.Name:lower():find("treasure")) then
+                    local primary = v.PrimaryPart or v:FindFirstChildWhichIsA("BasePart")
+                    if primary then
+                        State.Root.CFrame = CFrame.new(primary.Position + Vector3.new(0, 3, 0))
+                        break
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- Auto Raid
+task.spawn(function()
+    while task.wait(1) do
+        if Config.AutoRaid then
+            pcall(function()
+                local r = ReplicatedStorage:FindFirstChild("Remotes")
+                local c = r and r:FindFirstChild("CommF_")
+                if c then
+                    local en = Workspace:FindFirstChild("Enemies")
+                    if en then
+                        for _, e in ipairs(en:GetChildren()) do
+                            if e:IsA("Model") then
+                                local hum = e:FindFirstChildOfClass("Humanoid")
+                                local hrp = e:FindFirstChild("HumanoidRootPart")
+                                if hum and hrp and hum.Health > 0 and State.Root then
+                                    State.Root.CFrame = CFrame.new(hrp.Position + Vector3.new(0, 20, 0))
+                                    break
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+    end
+end)
+
+-- ============================================================
+--  VISUALS BACKEND
+-- ============================================================
 local function makeSnow()
     if State.SnowGui then State.SnowGui:Destroy() end
     State.SnowGui = Instance.new("ScreenGui")
@@ -730,10 +1178,7 @@ local function makeSnow()
         if not State.SnowGui or not State.SnowGui.Parent then return end
         for _, fl in ipairs(flakes) do
             fl.y = fl.y + fl.sp / 100
-            if fl.y > 105 then
-                fl.y = -5
-                fl.x = math.random() * 100
-            end
+            if fl.y > 105 then fl.y = -5; fl.x = math.random() * 100 end
             fl.f.Position = UDim2.new(fl.x / 100, 0, fl.y / 100, 0)
         end
     end)
@@ -744,7 +1189,6 @@ local function removeSnow()
     if State.SnowGui then State.SnowGui:Destroy(); State.SnowGui = nil end
 end
 
--- ============ VISUALS: Rain ============
 local function makeRain()
     if State.RainPart then State.RainPart:Destroy() end
     if State.RainConn then State.RainConn:Disconnect(); State.RainConn = nil end
@@ -779,7 +1223,6 @@ local function removeRain()
     if State.RainPart then State.RainPart:Destroy(); State.RainPart = nil end
 end
 
--- ============ VISUALS: Trail ============
 local function makeTrail()
     if not State.Character then return end
     local root = State.Character:FindFirstChild("HumanoidRootPart")
@@ -798,25 +1241,29 @@ local function makeTrail()
     t.LightEmission = 0.2
     t.Brightness = 10
     t.WidthScale = NumberSequence.new{NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(1, 0)}
-    State.TrailAttachments = {a0, a1, t}
-end
-
-local function removeTrail()
-    if State.Character then
-        local root = State.Character:FindFirstChild("HumanoidRootPart")
-        if root and root:FindFirstChild("NEXUS_Trail") then root.NEXUS_Trail:Destroy() end
-        for _, a in ipairs(root and root:GetChildren() or {}) do
-            if a.Name:sub(1, 11) == "Attachment" then end
-        end
-    end
-    State.TrailAttachments = nil
 end
 
 lp.CharacterAdded:Connect(function()
     if Config.Trail then task.wait(0.5); makeTrail() end
 end)
 
--- ============ VISUALS: Skybox Cleanup ============
+task.spawn(function()
+    while task.wait(0.3) do
+        if Config.Snow and not State.SnowGui then makeSnow()
+        elseif not Config.Snow and State.SnowGui then removeSnow() end
+        if Config.Rain and not State.RainPart then makeRain()
+        elseif not Config.Rain and State.RainPart then removeRain() end
+        if Config.Trail and State.Character then
+            local root = State.Character:FindFirstChild("HumanoidRootPart")
+            if root and not root:FindFirstChild("NEXUS_Trail") then makeTrail() end
+        elseif not Config.Trail and State.Character then
+            local root = State.Character:FindFirstChild("HumanoidRootPart")
+            if root and root:FindFirstChild("NEXUS_Trail") then root.NEXUS_Trail:Destroy() end
+        end
+    end
+end)
+
+-- Skybox Cleanup
 task.spawn(function()
     local savedSky = nil
     while task.wait(0.5) do
@@ -845,321 +1292,192 @@ task.spawn(function()
     end
 end)
 
--- ============ VFX WATCHERS ============
+-- Fullbright
 task.spawn(function()
-    while task.wait(0.3) do
-        if Config.Snow and not State.SnowGui then makeSnow()
-        elseif not Config.Snow and State.SnowGui then removeSnow() end
-        if Config.Rain and not State.RainPart then makeRain()
-        elseif not Config.Rain and State.RainPart then removeRain() end
-        if Config.Trail and State.Character then
-            local root = State.Character:FindFirstChild("HumanoidRootPart")
-            if root and not root:FindFirstChild("NEXUS_Trail") then makeTrail() end
-        elseif not Config.Trail and State.Character then
-            local root = State.Character:FindFirstChild("HumanoidRootPart")
-            if root and root:FindFirstChild("NEXUS_Trail") then root.NEXUS_Trail:Destroy() end
+    local origAmbient, origOutdoor, origBrightness
+    while task.wait(0.5) do
+        if Config.Fullbright then
+            if not origAmbient then
+                origAmbient = Lighting.Ambient
+                origOutdoor = Lighting.OutdoorAmbient
+                origBrightness = Lighting.Brightness
+            end
+            Lighting.Ambient = Color3.fromRGB(255,255,255)
+            Lighting.OutdoorAmbient = Color3.fromRGB(255,255,255)
+            Lighting.Brightness = 3
+        elseif origAmbient then
+            Lighting.Ambient = origAmbient
+            Lighting.OutdoorAmbient = origOutdoor
+            Lighting.Brightness = origBrightness
+            origAmbient = nil
         end
     end
 end)
 
--- ============ UTILITY: Anti-Void ============
+-- No Fog
+task.spawn(function()
+    local origFogEnd, origFogStart
+    while task.wait(0.5) do
+        if Config.NoFog then
+            if not origFogEnd then
+                origFogEnd = Lighting.FogEnd
+                origFogStart = Lighting.FogStart
+            end
+            Lighting.FogEnd = 9e9
+            Lighting.FogStart = 9e9
+        elseif origFogEnd then
+            Lighting.FogEnd = origFogEnd
+            Lighting.FogStart = origFogStart
+            origFogEnd = nil
+        end
+    end
+end)
+
+-- Hit Effects
+task.spawn(function()
+    while task.wait(0.2) do
+        if Config.HitEffects and State.Character then
+            local hitParts = {}
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= lp and p.Character then
+                    local hum = p.Character:FindFirstChildOfClass("Humanoid")
+                    if hum then
+                        local last = State.LastDamage[p]
+                        if last and hum.Health < last then
+                            local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+                            if hrp and not hitParts[p] then
+                                hitParts[p] = true
+                                local att = Instance.new("Attachment", hrp)
+                                local e = Instance.new("ParticleEmitter", att)
+                                e.Texture = "rbxassetid://4509687978"
+                                e.Color = ColorSequence.new(Config.HitEffectsColor)
+                                e.Rate = 0
+                                e.Lifetime = NumberRange.new(0.5)
+                                e.Speed = NumberRange.new(20, 30)
+                                e.Size = NumberSequence.new(1)
+                                e.SpreadAngle = Vector2.new(360, 360)
+                                e:Emit(15)
+                                task.delay(1, function() att:Destroy() end)
+                            end
+                        end
+                        State.LastDamage[p] = hum.Health
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- Damage Numbers
+task.spawn(function()
+    while task.wait(0.2) do
+        if Config.DamageNumbers then
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= lp and p.Character then
+                    local hum = p.Character:FindFirstChildOfClass("Humanoid")
+                    local head = p.Character:FindFirstChild("Head")
+                    if hum and head then
+                        local last = State.LastDamage[p]
+                        if last and hum.Health < last then
+                            local diff = math.floor(last - hum.Health)
+                            local gui = Instance.new("BillboardGui")
+                            gui.Size = UDim2.new(0, 100, 0, 40)
+                            gui.StudsOffset = Vector3.new(0, 2, 0)
+                            gui.AlwaysOnTop = true
+                            gui.Parent = head
+                            local lbl = Instance.new("TextLabel", gui)
+                            lbl.Size = UDim2.new(1, 0, 1, 0)
+                            lbl.BackgroundTransparency = 1
+                            lbl.Text = "-" .. diff
+                            lbl.TextColor3 = Color3.fromRGB(255, 80, 80)
+                            lbl.TextStrokeTransparency = 0
+                            lbl.Font = Enum.Font.GothamBold
+                            lbl.TextSize = 20
+                            task.delay(1, function() gui:Destroy() end)
+                        end
+                        State.LastDamage[p] = hum.Health
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- ============================================================
+--  UTILITY BACKEND
+-- ============================================================
 task.spawn(function()
     local orig = Workspace.FallenPartsDestroyHeight
     while task.wait(0.5) do
         if Config.AntiVoid then
             Workspace.FallenPartsDestroyHeight = -math.huge
-        else
-            if Workspace.FallenPartsDestroyHeight == -math.huge then
-                Workspace.FallenPartsDestroyHeight = orig
-            end
+        elseif Workspace.FallenPartsDestroyHeight == -math.huge then
+            Workspace.FallenPartsDestroyHeight = orig
         end
     end
 end)
 
--- ============ UTILITY: FPS Unlocker ============
 task.spawn(function()
     while task.wait(1) do
         if Config.FPSUnlocker then
-            pcall(function()
-                if has.setfpscap then setfpscap(9999) end
-                pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Level01 end)
-            end)
+            pcall(function() if has.setfpscap then setfpscap(9999) end end)
         end
     end
 end)
---[[
-    NEXUS HUB v1.1 — Extension Pack
-    Part 1 of 4: Combat additions
-    Add this AFTER the existing NEXUS HUB code in nexus.lua.
-    Kill Aura · Silent Aim · Auto Dodge · Weapon Cycle · Cooldown Indicator
---]]
 
--- ============ EXTENDED CONFIG ============
-Config.KillAura = false
-Config.KillAuraRange = 150
-Config.KillAuraPlayer = true
-Config.KillAuraNPC = true
-Config.KillAuraDelay = 0.15
-
-Config.SilentAim = false
-Config.SilentAimFOV = 100
-Config.SilentAimPart = "Head"
-Config.SilentAimShowFOV = false
-Config.SilentAimTeamCheck = false
-
-Config.AutoDodge = false
-Config.AutoDodgeRange = 30
-Config.AutoDodgeMode = "Random"
-
-Config.WeaponCycle = false
-Config.WeaponCycleDelay = 0.3
-
-Config.CooldownIndicator = false
-
--- ============ EXTENDED STATE ============
-State.SilentAimCircle = nil
-State.CooldownGui = nil
-State.KillAuraLast = setmetatable({}, { __mode = "k" })
-State.WeaponCycleLast = 0
-
--- ============ KILL AURA ============
-local function kaGetParts(t)
-    local parts = {}
-    for _, c in ipairs(t:GetChildren()) do
-        if c:IsA("BasePart") then parts[#parts+1] = {t, c} end
-    end
-    return parts
-end
-
-local function kaFire(target)
-    if not target or not target.Parent then return end
-    local now = tick()
-    if State.KillAuraLast[target] and now - State.KillAuraLast[target] < Config.KillAuraDelay then return end
-    State.KillAuraLast[target] = now
-    local hrp = target:FindFirstChild("HumanoidRootPart")
-    if not hrp or not getNet() then return end
-    local atk = ReplicatedStorage.Modules.Net:FindFirstChild("RE/RegisterAttack")
-    local hit = ReplicatedStorage.Modules.Net:FindFirstChild("RE/RegisterHit")
-    if not atk or not hit then return end
-    local parts = kaGetParts(target)
-    if #parts == 0 then return end
-    pcall(function()
-        atk:FireServer()
-        hit:FireServer(hrp, parts)
-    end)
-end
-
+-- Auto Rejoin
 task.spawn(function()
-    while task.wait(0.05) do
-        if Config.KillAura and State.Root then
-            local range = Config.KillAuraRange
-            -- players
-            if Config.KillAuraPlayer then
-                for _, p in ipairs(Players:GetPlayers()) do
-                    if p ~= lp and p.Character then
-                        local hrp = p.Character:FindFirstChild("HumanoidRootPart")
-                        local hum = p.Character:FindFirstChildOfClass("Humanoid")
-                        if hrp and hum and hum.Health > 0 then
-                            if (hrp.Position - State.Root.Position).Magnitude <= range then
-                                task.spawn(kaFire, p.Character)
-                            end
-                        end
-                    end
-                end
-            end
-            -- NPCs
-            if Config.KillAuraNPC then
-                local en = Workspace:FindFirstChild("Enemies")
-                if en then
-                    for _, e in ipairs(en:GetChildren()) do
-                        if e:IsA("Model") then
-                            local hrp = e:FindFirstChild("HumanoidRootPart")
-                            local hum = e:FindFirstChildOfClass("Humanoid")
-                            if hrp and hum and hum.Health > 0 then
-                                if (hrp.Position - State.Root.Position).Magnitude <= range then
-                                    task.spawn(kaFire, e)
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-end)
-
--- ============ SILENT AIM (client-side, no __namecall hook) ============
-local function saGetTarget()
-    if not State.Root then return nil end
-    local mousePos = UserInputService:GetMouseLocation()
-    local closest, closestDist = nil, Config.SilentAimFOV
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= lp and p.Character then
-            if Config.SilentAimTeamCheck and p.Team and lp.Team and p.Team == lp.Team then
-                -- skip teammate
-            else
-                local part = p.Character:FindFirstChild(Config.SilentAimPart)
-                local hum = p.Character:FindFirstChildOfClass("Humanoid")
-                if part and hum and hum.Health > 0 then
-                    local pos, onScreen = camera:WorldToViewportPoint(part.Position)
-                    if onScreen then
-                        local dist = (Vector2.new(pos.X, pos.Y) - mousePos).Magnitude
-                        if dist < closestDist then
-                            closestDist = dist
-                            closest = {part = part, char = p.Character}
-                        end
-                    end
-                end
-            end
-        end
-    end
-    return closest
-end
-
-if has.getrawmetatable and has.hookmetamethod then
-    local oldIndex
-    oldIndex = hookmetamethod(game, "__index", function(self, key)
-        if Config.SilentAim and (self == camera or tostring(self):find("Camera")) then
-            if key == "CFrame" then
-                local t = saGetTarget()
-                if t and t.part then
-                    local camPos = camera.CFrame.Position
-                    return CFrame.new(camPos, t.part.Position)
-                end
-            end
-        end
-        return oldIndex(self, key)
-    end)
-end
-
--- FOV circle
-if Drawing and Drawing.new then
-    State.SilentAimCircle = Drawing.new("Circle")
-    State.SilentAimCircle.Thickness = 1.5
-    State.SilentAimCircle.NumSides = 80
-    State.SilentAimCircle.Filled = false
-    State.SilentAimCircle.Color = Color3.fromRGB(0, 255, 150)
-    State.SilentAimCircle.Transparency = 0.8
-    State.SilentAimCircle.Visible = false
-
-    RunService.RenderStepped:Connect(function()
-        if State.SilentAimCircle then
-            State.SilentAimCircle.Visible = Config.SilentAim and Config.SilentAimShowFOV
-            State.SilentAimCircle.Radius = Config.SilentAimFOV
-            State.SilentAimCircle.Position = UserInputService:GetMouseLocation()
+    lp.OnTeleport:Connect(function(state)
+        if state == Enum.TeleportState.Started and Config.AutoRejoin then
+            -- queue rejoin logic
         end
     end)
-end
-
--- ============ AUTO DODGE ============
-task.spawn(function()
-    while task.wait(0.1) do
-        if Config.AutoDodge and State.Root and State.Humanoid then
-            for _, p in ipairs(Players:GetPlayers()) do
-                if p ~= lp and p.Character then
-                    local hrp = p.Character:FindFirstChild("HumanoidRootPart")
-                    if hrp then
-                        local dist = (hrp.Position - State.Root.Position).Magnitude
-                        if dist < Config.AutoDodgeRange then
-                            local offset
-                            if Config.AutoDodgeMode == "Random" then
-                                offset = Vector3.new(math.random(-15,15), 0, math.random(-15,15))
-                            else
-                                offset = (State.Root.Position - hrp.Position).Unit * 15
-                            end
-                            local target = State.Root.CFrame + offset
-                            State.Root.CFrame = CFrame.new(target.Position) * State.Root.CFrame.Rotation
-                        end
-                    end
-                end
-            end
-        end
-    end
 end)
 
--- ============ WEAPON CYCLE ============
+-- Anti-AFK
 task.spawn(function()
-    while task.wait(0.1) do
-        if Config.WeaponCycle then
-            local now = tick()
-            if now - State.WeaponCycleLast < Config.WeaponCycleDelay then continue end
-            State.WeaponCycleLast = now
-            local bp = lp:FindFirstChild("Backpack")
-            if bp and State.Humanoid then
-                local tools = {}
-                for _, t in ipairs(bp:GetChildren()) do
-                    if t:IsA("Tool") then tools[#tools+1] = t end
-                end
-                if #tools > 0 then
-                    local pick = tools[math.random(#tools)]
-                    pcall(function() State.Humanoid:EquipTool(pick) end)
-                end
-            end
+    local VirtualUser = game:GetService("VirtualUser")
+    lp.Idled:Connect(function()
+        if Config.AntiAFK then
+            VirtualUser:CaptureController()
+            VirtualUser:ClickButton2(Vector2.new())
         end
-    end
+    end)
 end)
 
--- ============ COOLDOWN INDICATOR ============
+-- Server Info
 task.spawn(function()
-    State.CooldownGui = Instance.new("ScreenGui")
-    State.CooldownGui.Name = "NEXUS_Cooldown"
-    State.CooldownGui.ResetOnSpawn = false
-    pcall(function() State.CooldownGui.Parent = parent end)
-    if not State.CooldownGui.Parent then State.CooldownGui.Parent = lp:WaitForChild("PlayerGui") end
-    local lbl = Instance.new("TextLabel", State.CooldownGui)
-    lbl.Size = UDim2.new(0, 200, 0, 40)
-    lbl.Position = UDim2.new(0, 20, 0, 200)
+    local infoGui = Instance.new("ScreenGui")
+    infoGui.Name = "NEXUS_ServerInfo"
+    infoGui.ResetOnSpawn = false
+    pcall(function() infoGui.Parent = parent end)
+    if not infoGui.Parent then infoGui.Parent = lp:WaitForChild("PlayerGui") end
+    local lbl = Instance.new("TextLabel", infoGui)
+    lbl.Size = UDim2.new(0, 240, 0, 60)
+    lbl.Position = UDim2.new(1, -260, 0, 60)
     lbl.BackgroundColor3 = Color3.fromRGB(12, 12, 16)
-    lbl.BackgroundTransparency = 0.3
+    lbl.BackgroundTransparency = 0.2
     lbl.BorderSizePixel = 0
     lbl.TextColor3 = Config.Theme
     lbl.Font = Enum.Font.GothamBold
-    lbl.TextSize = 12
-    lbl.Text = ""
+    lbl.TextSize = 10
+    lbl.TextYAlignment = Enum.TextYAlignment.Top
     Instance.new("UICorner", lbl).CornerRadius = UDim.new(0, 8)
-    while task.wait(0.1) do
-        if Config.CooldownIndicator then
+    while task.wait(1) do
+        if Config.ServerInfo then
             lbl.Visible = true
-            local info = {}
-            local char = State.Character
-            if char then
-                for _, v in ipairs(char:GetDescendants()) do
-                    if v:IsA("NumberValue") and (v.Name:lower():find("cooldown") or v.Name:lower():find("cd")) then
-                        info[#info+1] = v.Name .. ": " .. tostring(math.floor(v.Value * 100) / 100)
-                    end
-                end
-            end
-            lbl.Text = #info > 0 and table.concat(info, "\n") or "No cooldowns"
+            local players = #Players:GetPlayers()
+            local ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
+            local job = game.JobId:sub(1, 8) .. "..."
+            lbl.Text = ("Server Info\nPlayers: %d | Ping: %d ms\nJob: %s"):format(players, ping, job)
         else
             lbl.Visible = false
         end
     end
 end)
--- ============ UI: COMBAT ADDITIONS ============
-local CombatPage = Pages.Combat
 
-section(CombatPage, "Kill Aura", 13)
-toggle(CombatPage, "Enable Kill Aura", "KillAura", 14)
-slider(CombatPage, "Kill Aura Range", "KillAuraRange", 30, 500, 15)
-slider(CombatPage, "Kill Aura Delay", "KillAuraDelay", 0.05, 1, 16)
-toggle(CombatPage, "Target Players", "KillAuraPlayer", 17)
-toggle(CombatPage, "Target NPCs", "KillAuraNPC", 18)
-
-section(CombatPage, "Silent Aim", 19)
-toggle(CombatPage, "Enable Silent Aim", "SilentAim", 20)
-slider(CombatPage, "Silent Aim FOV", "SilentAimFOV", 20, 500, 21)
-toggle(CombatPage, "Show FOV Circle", "SilentAimShowFOV", 22)
-toggle(CombatPage, "Team Check", "SilentAimTeamCheck", 23)
-
-section(CombatPage, "Auto Dodge", 24)
-toggle(CombatPage, "Enable Auto Dodge", "AutoDodge", 25)
-slider(CombatPage, "Dodge Range", "AutoDodgeRange", 10, 100, 26)
-
-section(CombatPage, "Weapon Cycle", 27)
-toggle(CombatPage, "Enable Weapon Cycle", "WeaponCycle", 28)
-slider(CombatPage, "Cycle Delay", "WeaponCycleDelay", 0.1, 2, 29)
-
-section(CombatPage, "Indicators", 30)
-toggle(CombatPage, "Cooldown Indicator", "CooldownIndicator", 31)
-
-print("[NEXUS v1.1] Part 1 loaded — Combat additions active")
+-- ============================================================
+--  DONE
+-- ============================================================
+print("[NEXUS v1.1] Part 3/3 loaded — all features active")
+print("[NEXUS v1.1] Combat · Movement · Farming · Visuals · Utility ready")
